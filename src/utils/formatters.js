@@ -3,6 +3,9 @@
  * Each currency uses its own locale and symbol — no conversion performed.
  */
 
+// Default currency display order (used as fallback)
+export const DEFAULT_CURRENCY_ORDER = ['USD', 'EUR', 'TL', 'RON'];
+
 // Currency metadata: symbol, locale, fraction digits
 export const CURRENCY_META = {
   USD: { symbol: '$',   locale: 'en-US',  fractionDigits: 2 },
@@ -116,6 +119,29 @@ export function getPeriodBounds() {
     weekly:  { start: weekStart.getTime(), end: dailyEnd },
     monthly: { start: monthStart.getTime(), end: dailyEnd },
   };
+}
+
+/**
+ * Normalizes a user-entered decimal string by replacing comma with dot.
+ * Allows the app to accept '10,50' as a valid way to enter 10.50.
+ *
+ * @param {string} value - Raw input string (e.g. '10,50' or '10.50')
+ * @returns {string} Normalized string with '.' as decimal separator
+ */
+export function normalizeAmount(value) {
+  if (!value && value !== 0) return '';
+  return String(value).replace(',', '.');
+}
+
+/**
+ * Validates a decimal input string, accepting both '.' and ',' as separators.
+ * Allows digits with up to 2 decimal places.
+ *
+ * @param {string} value - The raw input string to validate
+ * @returns {boolean}
+ */
+export function isValidDecimalInput(value) {
+  return /^\d*[.,]?\d{0,2}$/.test(value);
 }
 
 /**

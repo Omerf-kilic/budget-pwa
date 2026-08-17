@@ -1,30 +1,151 @@
-import { useState, useId } from 'react';
+import { useState, useId, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { formatAmount, getCurrencySymbol, CURRENCIES, CURRENCY_META } from '../utils/formatters';
+import {
+  formatAmount,
+  getCurrencySymbol,
+  CURRENCY_META,
+  normalizeAmount,
+  isValidDecimalInput,
+} from '../utils/formatters';
 
 /**
  * BalanceSettings — Two sections:
- *   1. Add Balance: For each currency, show current balance and an input to add funds.
- *   2. Main Currency: Radio button selector for mainDisplayCurrency.
+ *   1. Add Balance: Draggable currency list. Each card shows balance and an input to add funds.
+ *   2. Main Currency: Radio selector for mainDisplayCurrency.
+ *
+ * Drag-and-drop works on both desktop (HTML5 drag API) and mobile (touch events).
+ * The user's currency order is persisted to localStorage via AppContext.
  *
  * @param {object} props
  * @param {function} props.showToast - Callback(message, type) to display a toast
  */
 export default function BalanceSettings({ showToast }) {
-  const { balances, settings, addBalance, setMainCurrency } = useApp();
+  const { balances, settings, currencyOrder, addBalance, setMainCurrency, setCurrencyOrder } =
+    useApp();
 
-  // Separate amount state per currency
-  const [amounts, setAmounts] = useState({ USD: '', EUR: '', TL: '', RON: '' });
+  // Per-currency form state (amount + note inputs)
+  const [amounts,      setAmounts]      = useState({ USD: '', EUR: '', TL: '', RON: '' });
   const [descriptions, setDescriptions] = useState({ USD: '', EUR: '', TL: '', RON: '' });
   const [loadingCurrency, setLoadingCurrency] = useState(null);
 
   const formBaseId = useId();
 
+  // ─── Drag-and-Drop State ──────────────────────────────────────────────────
+  // draggingIdx: the index currently being dragged
+  // overIdx:     the index the drag is currently hovering over
+  const [draggingIdx, setDraggingIdx] = useState(null);
+  const [overIdx,     setOverIdx]     = useState(null);
+
+  // dragRef holds the authoritative from/to indices without triggering re-renders on move
+  const dragRef  = useRef({ from: null, to: null });
+  const listRef  = useRef(null); // ref to the currency list container
+
   /**
-   * Handles the "Add" button for a specific currency.
+   * Finalizes a drag operation: reorders currencyOrder and resets drag state.
+   */
+  const commitReorder = () => {
+    const { from, to } = dragRef.current;
+    if (from !== null && to !== null && from !== to) {
+      const newOrder = [...currencyOrder];
+      const [removed] = newOrder.splice(from, 1);
+      newOrder.splice(to, 0, removed);
+      setCurrencyOrder(newOrder);
+    }
+    dragRef.current = { from: null, to: null };
+    setDraggingIdx(null);
+    setOverIdx(null);
+  };
+
+  // ── Desktop: HTML5 drag events ────────────────────────────────────────────
+  const handleDragStart = (idx) => {
+    dragRef.current.from = idx;
+    dragRef.current.to   = idx;
+    setDraggingIdx(idx);
+  };
+
+  const handleDragOver = (e, idx) => {
+    e.preventDefault(); // required to allow drop
+    if (dragRef.current.to !== idx) {
+      dragRef.current.to = idx;
+      setOverIdx(idx);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    commitReorder();
+  };
+
+  const handleDragEnd = () => {
+    // dragEnd fires even if drop didn't land on a target
+    commitReorder();
+  };
+
+  // ── Mobile: Touch events (non-passive to allow preventDefault) ────────────
+  const handleTouchStart = (e, idx) => {
+    dragRef.current.from = idx;
+    dragRef.current.to   = idx;
+    setDraggingIdx(idx);
+  };
+
+  const handleTouchEnd = () => {
+    commitReorder();
+  };
+
+  /**
+   * Attach a non-passive touchmove listener to the list container.
+   * This is necessary because React's synthetic onTouchMove is passive
+   * by default in modern browsers, preventing e.preventDefault() from
+   * stopping page scroll during drag.
+   */
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const onTouchMove = (e) => {
+      // Only intercept while actively dragging
+      if (dragRef.current.from === null) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      // Find which card the finger is currently over
+      const cards = el.querySelectorAll('[data-drag-card]');
+      for (let i = 0; i < cards.length; i++) {
+        const rect = cards[i].getBoundingClientRect();
+        if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+          if (dragRef.current.to !== i) {
+            dragRef.current.to = i;
+            setOverIdx(i);
+          }
+          break;
+        }
+      }
+    };
+
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []); // empty deps: we read dragRef (a ref) not state, so no stale closure
+
+  // ─── Form Handlers ────────────────────────────────────────────────────────
+
+  /**
+   * Validates and updates the amount input for a given currency.
+   * Accepts both '.' and ',' as decimal separators.
+   */
+  const handleAmountChange = (currency, value) => {
+    if (isValidDecimalInput(value)) {
+      setAmounts((prev) => ({ ...prev, [currency]: value }));
+    }
+  };
+
+  /**
+   * Handles the "+ Add" button for a specific currency.
+   * Normalizes comma separators before parsing.
    */
   const handleAddBalance = (currency) => {
-    const numericAmount = parseFloat(amounts[currency]);
+    const normalized    = normalizeAmount(amounts[currency]);
+    const numericAmount = parseFloat(normalized);
+
     if (!numericAmount || numericAmount <= 0) {
       showToast(`Enter a valid amount for ${currency}.`, 'error');
       return;
@@ -32,11 +153,14 @@ export default function BalanceSettings({ showToast }) {
 
     setLoadingCurrency(currency);
     const description = descriptions[currency].trim() || 'Balance Added';
-    const success = addBalance(numericAmount, currency, description);
+    const success     = addBalance(numericAmount, currency, description);
 
     if (success) {
-      showToast(`+${getCurrencySymbol(currency)}${numericAmount.toFixed(2)} added to ${currency}`, 'success');
-      setAmounts((prev) => ({ ...prev, [currency]: '' }));
+      showToast(
+        `+${getCurrencySymbol(currency)}${numericAmount.toFixed(2)} added to ${currency}`,
+        'success'
+      );
+      setAmounts((prev)      => ({ ...prev, [currency]: '' }));
       setDescriptions((prev) => ({ ...prev, [currency]: '' }));
     } else {
       showToast('Failed to add balance.', 'error');
@@ -45,16 +169,7 @@ export default function BalanceSettings({ showToast }) {
     setTimeout(() => setLoadingCurrency(null), 300);
   };
 
-  /**
-   * Handles amount input change for a given currency.
-   */
-  const handleAmountChange = (currency, value) => {
-    if (/^\d*\.?\d{0,2}$/.test(value)) {
-      setAmounts((prev) => ({ ...prev, [currency]: value }));
-    }
-  };
-
-  // Currency display colors for visual distinction
+  // Color palette per currency for visual distinction
   const currencyColors = {
     USD: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/20' },
     EUR: { bg: 'bg-blue-500/15',    text: 'text-blue-400',    border: 'border-blue-500/20'    },
@@ -66,59 +181,110 @@ export default function BalanceSettings({ showToast }) {
     <div className="scroll-area no-scrollbar h-full px-4 py-4 page-enter space-y-6">
 
       {/* ══════════════════════════════════════════
-          Section 1: Add Balance per Currency
+          Section 1: Add Balance (Draggable List)
       ══════════════════════════════════════════ */}
       <section aria-labelledby="add-balance-heading">
-        <h2 id="add-balance-heading" className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-          Add Balance
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2
+            id="add-balance-heading"
+            className="text-xs font-bold text-slate-400 uppercase tracking-widest"
+          >
+            Add Balance
+          </h2>
+          {/* Subtle drag hint */}
+          <span className="text-[10px] text-slate-600 flex items-center gap-1">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
+            Drag to reorder
+          </span>
+        </div>
 
-        <div className="space-y-3">
-          {CURRENCIES.map((currency) => {
-            const colors = currencyColors[currency];
+        {/* Draggable currency card list */}
+        <div
+          ref={listRef}
+          className="space-y-2.5"
+          onTouchEnd={handleTouchEnd}
+        >
+          {currencyOrder.map((currency, index) => {
+            const colors         = currencyColors[currency];
             const currentBalance = balances[currency] ?? 0;
-            const isNegative = currentBalance < 0;
-            const isLoading = loadingCurrency === currency;
+            const isNegative     = currentBalance < 0;
+            const isLoading      = loadingCurrency === currency;
+            const isDragging     = draggingIdx === index;
+            const isOver         = overIdx === index && draggingIdx !== index;
 
             return (
               <div
                 key={currency}
                 id={`balance-card-${currency}`}
-                className="glass-card rounded-2xl p-4 space-y-3"
+                data-drag-card           // used by touchmove to find card elements
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e)  => handleDragOver(e, index)}
+                onDrop={(e)      => handleDrop(e)}
+                onDragEnd={handleDragEnd}
+                className={`
+                  glass-card rounded-2xl p-4 space-y-3 select-none
+                  transition-all duration-150
+                  ${isDragging ? 'opacity-40 scale-[0.97]' : 'opacity-100 scale-100'}
+                  ${isOver ? 'border border-green-400/50 shadow-glow' : ''}
+                `}
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
               >
-                {/* Currency header row */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-9 h-9 rounded-xl ${colors.bg} flex items-center justify-center`}>
-                      <span className={`text-xs font-bold ${colors.text}`}>
-                        {CURRENCY_META[currency].symbol}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">{currency}</p>
-                      <p className="text-[10px] text-slate-500">
-                        {currency === 'USD' && 'US Dollar'}
-                        {currency === 'EUR' && 'Euro'}
-                        {currency === 'TL'  && 'Turkish Lira'}
-                        {currency === 'RON' && 'Romanian Leu'}
-                      </p>
-                    </div>
+                {/* ── Card header: drag handle + currency info + balance ── */}
+                <div className="flex items-center gap-3">
+                  {/* Drag handle */}
+                  <div
+                    className="flex flex-col gap-[3px] px-1 py-2 shrink-0 cursor-grab active:cursor-grabbing touch-none"
+                    onTouchStart={(e) => handleTouchStart(e, index)}
+                    aria-label={`Drag to reorder ${currency}`}
+                    role="button"
+                    tabIndex={-1}
+                  >
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="block w-4 h-[2.5px] bg-slate-600 rounded-full"
+                      />
+                    ))}
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-500">Current</p>
+
+                  {/* Currency icon */}
+                  <div className={`w-9 h-9 rounded-xl ${colors.bg} flex items-center justify-center shrink-0`}>
+                    <span className={`text-xs font-bold ${colors.text}`}>
+                      {CURRENCY_META[currency].symbol}
+                    </span>
+                  </div>
+
+                  {/* Currency name */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white">{currency}</p>
+                    <p className="text-[10px] text-slate-500">
+                      {currency === 'USD' && 'US Dollar'}
+                      {currency === 'EUR' && 'Euro'}
+                      {currency === 'TL'  && 'Turkish Lira'}
+                      {currency === 'RON' && 'Romanian Leu'}
+                    </p>
+                  </div>
+
+                  {/* Current balance */}
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-slate-500">Balance</p>
                     <p className={`text-sm font-bold ${isNegative ? 'text-red-400' : 'text-white'}`}>
                       {formatAmount(currentBalance, currency)}
                     </p>
                   </div>
                 </div>
 
-                {/* Input row */}
+                {/* ── Amount + Add button ── */}
                 <div className="flex gap-2">
                   <input
                     id={`${formBaseId}-amount-${currency}`}
-                    type="number"
+                    type="text"
                     inputMode="decimal"
-                    placeholder="Amount to add"
+                    placeholder="Amount (e.g. 10,50)"
                     value={amounts[currency]}
                     onChange={(e) => handleAmountChange(currency, e.target.value)}
                     className="
@@ -134,11 +300,11 @@ export default function BalanceSettings({ showToast }) {
                     id={`add-balance-btn-${currency}`}
                     onClick={() => handleAddBalance(currency)}
                     disabled={isLoading}
-                    className={`
+                    className="
                       shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold text-white
                       bg-green-600 hover:bg-green-500 active:bg-green-700
                       transition-all duration-150 btn-press disabled:opacity-60
-                    `}
+                    "
                     aria-label={`Add balance to ${currency}`}
                   >
                     {isLoading ? (
@@ -149,7 +315,7 @@ export default function BalanceSettings({ showToast }) {
                   </button>
                 </div>
 
-                {/* Optional description */}
+                {/* ── Optional note ── */}
                 <input
                   id={`${formBaseId}-desc-${currency}`}
                   type="text"
@@ -174,10 +340,13 @@ export default function BalanceSettings({ showToast }) {
       </section>
 
       {/* ══════════════════════════════════════════
-          Section 2: Main Display Currency Setting
+          Section 2: Main Display Currency
       ══════════════════════════════════════════ */}
       <section aria-labelledby="main-currency-heading">
-        <h2 id="main-currency-heading" className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+        <h2
+          id="main-currency-heading"
+          className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1"
+        >
           Main Display Currency
         </h2>
         <p className="text-xs text-slate-600 mb-3">
@@ -189,9 +358,9 @@ export default function BalanceSettings({ showToast }) {
           role="radiogroup"
           aria-labelledby="main-currency-heading"
         >
-          {CURRENCIES.map((currency) => {
+          {currencyOrder.map((currency) => {
             const isSelected = settings.mainDisplayCurrency === currency;
-            const colors = currencyColors[currency];
+            const colors     = currencyColors[currency];
 
             return (
               <button
@@ -206,9 +375,10 @@ export default function BalanceSettings({ showToast }) {
                 className={`
                   w-full flex items-center gap-3 px-4 py-3.5 rounded-xl
                   transition-all duration-150 btn-press
-                  ${isSelected
-                    ? 'bg-green-600/15 border border-green-600/25'
-                    : 'border border-transparent hover:bg-white/3'
+                  ${
+                    isSelected
+                      ? 'bg-green-600/15 border border-green-600/25'
+                      : 'border border-transparent hover:bg-white/3'
                   }
                 `}
               >
@@ -221,9 +391,7 @@ export default function BalanceSettings({ showToast }) {
                   `}
                   aria-hidden="true"
                 >
-                  {isSelected && (
-                    <div className="w-2 h-2 rounded-full bg-white" />
-                  )}
+                  {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
                 </div>
 
                 {/* Currency label */}
@@ -233,14 +401,12 @@ export default function BalanceSettings({ showToast }) {
                       {CURRENCY_META[currency].symbol}
                     </span>
                   </div>
-                  <div className="text-left">
-                    <p className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
-                      {currency}
-                    </p>
-                  </div>
+                  <p className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
+                    {currency}
+                  </p>
                 </div>
 
-                {/* Current balance preview */}
+                {/* Balance preview */}
                 <p className="text-xs text-slate-500 font-medium">
                   {formatAmount(balances[currency] ?? 0, currency)}
                 </p>

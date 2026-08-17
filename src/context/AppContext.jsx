@@ -1,6 +1,7 @@
 import { createContext, useContext, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { DEFAULT_CURRENCY_ORDER } from '../utils/formatters';
 
 // ─── Initial State ───────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export function AppProvider({ children }) {
   const [balances, setBalances]         = useLocalStorage('budget_balances', INITIAL_BALANCES);
   const [transactions, setTransactions] = useLocalStorage('budget_transactions', []);
   const [settings, setSettings]         = useLocalStorage('budget_settings', INITIAL_SETTINGS);
+  // User's preferred currency display order for the drag-and-drop list
+  const [currencyOrder, setCurrencyOrderRaw] = useLocalStorage('budget_currency_order', DEFAULT_CURRENCY_ORDER);
 
   /**
    * Saves an expense transaction.
@@ -138,14 +141,28 @@ export function AppProvider({ children }) {
     [setBalances, setTransactions]
   );
 
+  /**
+   * Updates the display order of currencies (from drag-and-drop).
+   *
+   * @param {string[]} newOrder - Reordered array of currency codes
+   */
+  const setCurrencyOrder = useCallback(
+    (newOrder) => {
+      setCurrencyOrderRaw(newOrder);
+    },
+    [setCurrencyOrderRaw]
+  );
+
   const value = {
     balances,
     transactions,
     settings,
+    currencyOrder,
     addExpense,
     addBalance,
     setMainCurrency,
     deleteTransaction,
+    setCurrencyOrder,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

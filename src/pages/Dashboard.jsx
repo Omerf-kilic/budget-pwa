@@ -1,36 +1,60 @@
 import { useState, useRef, useId } from 'react';
 import { useApp } from '../context/AppContext';
-import { formatAmount, getCurrencySymbol, CURRENCIES } from '../utils/formatters';
+import {
+  formatAmount,
+  getCurrencySymbol,
+  CURRENCIES,
+  normalizeAmount,
+  isValidDecimalInput,
+} from '../utils/formatters';
 
 /**
  * Dashboard — The main screen.
- * Shows the balance card for the mainDisplayCurrency and the Quick Add Expense form.
+ * Features:
+ * - Balance card with hide/show privacy toggle (hidden by default)
+ * - Quick Add Expense form with comma-aware decimal input
  *
  * @param {object} props
  * @param {function} props.showToast - Callback(message, type) to display a toast
  */
 export default function Dashboard({ showToast }) {
-  const { balances, settings, addExpense } = useApp();
-  const amountInputId  = useId();
-  const descInputId    = useId();
+  const { balances, settings, currencyOrder, addExpense } = useApp();
+  const amountInputId = useId();
+  const descInputId   = useId();
 
   // Form state
-  const [amount,      setAmount]      = useState('');
-  const [currency,    setCurrency]    = useState('RON');
-  const [description, setDescription] = useState('');
+  const [amount,       setAmount]       = useState('');
+  const [currency,     setCurrency]     = useState('RON');
+  const [description,  setDescription]  = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Balance privacy toggle — hidden by default for privacy on open
+  const [isBalanceVisible, setIsBalanceVisible] = useState(false);
+
   const amountRef = useRef(null);
 
-  const mainCurrency     = settings.mainDisplayCurrency;
-  const mainBalance      = balances[mainCurrency] ?? 0;
+  const mainCurrency      = settings.mainDisplayCurrency;
+  const mainBalance       = balances[mainCurrency] ?? 0;
   const isNegativeBalance = mainBalance < 0;
 
   /**
-   * Handles the Save Expense button press.
-   * Validates input, calls addExpense, shows toast, and resets form.
+   * Handles amount input changes.
+   * Accepts both '.' and ',' as decimal separators (e.g. '10,50').
+   */
+  const handleAmountChange = (e) => {
+    const value = e.target.value;
+    if (isValidDecimalInput(value)) {
+      setAmount(value);
+    }
+  };
+
+  /**
+   * Handles Save Expense.
+   * Normalizes comma decimal separators before parsing.
    */
   const handleSaveExpense = () => {
-    const numericAmount = parseFloat(amount);
+    const normalized    = normalizeAmount(amount);
+    const numericAmount = parseFloat(normalized);
 
     if (!numericAmount || numericAmount <= 0) {
       showToast('Please enter a valid amount.', 'error');
@@ -43,8 +67,10 @@ export default function Dashboard({ showToast }) {
     const success = addExpense(numericAmount, currency, description);
 
     if (success) {
-      showToast(`Expense saved! -${getCurrencySymbol(currency)}${numericAmount.toFixed(2)}`, 'success');
-      // Reset the form
+      showToast(
+        `Expense saved! -${getCurrencySymbol(currency)}${numericAmount.toFixed(2)}`,
+        'success'
+      );
       setAmount('');
       setDescription('');
       setCurrency('RON');
@@ -55,16 +81,8 @@ export default function Dashboard({ showToast }) {
     setTimeout(() => setIsSubmitting(false), 300);
   };
 
-  /**
-   * Handles numeric amount input — allows only valid positive numbers.
-   */
-  const handleAmountChange = (e) => {
-    const value = e.target.value;
-    // Allow digits and a single decimal point
-    if (/^\d*\.?\d{0,2}$/.test(value)) {
-      setAmount(value);
-    }
-  };
+  // Other currencies shown decoratively on the balance card (respects user order)
+  const otherCurrencies = currencyOrder.filter((c) => c !== mainCurrency);
 
   return (
     <div className="scroll-area no-scrollbar h-full flex flex-col px-4 py-4 gap-4 page-enter">
@@ -74,39 +92,90 @@ export default function Dashboard({ showToast }) {
       ══════════════════════════════════════════ */}
       <section aria-label={`${mainCurrency} Balance`}>
         <div className="balance-card rounded-3xl p-6 shadow-card-lg relative">
-          {/* Currency & Label */}
+
+          {/* Currency label + hide/show toggle */}
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-green-300/70 tracking-widest uppercase">
               {mainCurrency} Balance
             </span>
-            <span className="text-xs font-medium text-green-300/60 bg-green-900/40 px-2.5 py-1 rounded-full">
-              Main Currency
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-green-300/60 bg-green-900/40 px-2.5 py-1 rounded-full">
+                Main Currency
+              </span>
+              {/* Eye toggle button */}
+              <button
+                id="toggle-balance-visibility"
+                onClick={() => setIsBalanceVisible((v) => !v)}
+                className="
+                  w-8 h-8 rounded-lg flex items-center justify-center
+                  text-green-300/60 hover:text-green-200 hover:bg-green-800/40
+                  transition-colors btn-press
+                "
+                aria-label={isBalanceVisible ? 'Hide balance' : 'Show balance'}
+                aria-pressed={isBalanceVisible}
+              >
+                {isBalanceVisible ? (
+                  /* Eye-off icon */
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                    />
+                  </svg>
+                ) : (
+                  /* Eye icon */
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Balance amount */}
+          {/* Balance amount — hidden or visible */}
           <div
             id="main-balance-display"
-            className={`text-4xl font-extrabold tracking-tight leading-none mt-1 ${
-              isNegativeBalance ? 'text-red-400' : 'text-white'
+            className={`text-4xl font-extrabold tracking-tight leading-none mt-1 transition-all duration-300 ${
+              isNegativeBalance && isBalanceVisible ? 'text-red-400' : 'text-white'
             }`}
           >
-            {formatAmount(mainBalance, mainCurrency)}
+            {isBalanceVisible ? (
+              formatAmount(mainBalance, mainCurrency)
+            ) : (
+              <span className="tracking-widest text-3xl text-green-200/40 select-none">
+                ••••••
+              </span>
+            )}
           </div>
 
-          {/* Decorative bottom row */}
+          {/* Other currencies decorative row */}
           <div className="flex items-center justify-between mt-5">
             <div className="flex gap-3">
-              {CURRENCIES.filter((c) => c !== mainCurrency).map((c) => (
+              {otherCurrencies.map((c) => (
                 <div key={c} className="text-center">
                   <p className="text-[10px] text-green-400/50 uppercase">{c}</p>
                   <p className="text-xs font-semibold text-green-200/60">
-                    {(balances[c] ?? 0).toFixed(0)}
+                    {isBalanceVisible
+                      ? (balances[c] ?? 0).toFixed(0)
+                      : '···'}
                   </p>
                 </div>
               ))}
             </div>
-            {/* Small wallet icon */}
+            {/* Wallet icon */}
             <div className="w-10 h-10 rounded-full bg-green-800/50 flex items-center justify-center">
               <svg className="w-5 h-5 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -134,7 +203,7 @@ export default function Dashboard({ showToast }) {
 
         {/* Amount + Currency Row */}
         <div className="flex items-center gap-2">
-          {/* Large numeric input */}
+          {/* Large numeric input — accepts dot and comma */}
           <div className="flex-1 flex flex-col items-center">
             <label htmlFor={amountInputId} className="sr-only">
               Expense amount
@@ -142,10 +211,9 @@ export default function Dashboard({ showToast }) {
             <input
               ref={amountRef}
               id={amountInputId}
-              type="number"
+              type="text"
               inputMode="decimal"
-              pattern="[0-9]*"
-              placeholder="0.00"
+              placeholder="0,00"
               value={amount}
               onChange={handleAmountChange}
               className="amount-input"
@@ -209,7 +277,7 @@ export default function Dashboard({ showToast }) {
           />
         </div>
 
-        {/* Spacer to push button down */}
+        {/* Spacer */}
         <div className="flex-1" />
 
         {/* Save Expense Button */}
