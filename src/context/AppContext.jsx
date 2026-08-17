@@ -14,6 +14,7 @@ const INITIAL_BALANCES = {
 
 const INITIAL_SETTINGS = {
   mainDisplayCurrency: 'RON',
+  language: 'en', // 'en' | 'tr'
 };
 
 // ─── Context Definition ───────────────────────────────────────────────────────
@@ -142,6 +143,18 @@ export function AppProvider({ children }) {
   );
 
   /**
+   * Changes the active UI language.
+   *
+   * @param {'en'|'tr'} lang
+   */
+  const setLanguage = useCallback(
+    (lang) => {
+      setSettings((prev) => ({ ...prev, language: lang }));
+    },
+    [setSettings]
+  );
+
+  /**
    * Updates the display order of currencies (from drag-and-drop).
    *
    * @param {string[]} newOrder - Reordered array of currency codes
@@ -161,6 +174,7 @@ export function AppProvider({ children }) {
     addExpense,
     addBalance,
     setMainCurrency,
+    setLanguage,
     deleteTransaction,
     setCurrencyOrder,
   };

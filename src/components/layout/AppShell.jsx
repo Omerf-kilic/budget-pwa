@@ -1,26 +1,11 @@
 import { useState } from 'react';
 import HamburgerMenu from './HamburgerMenu';
 import Toast from '../ui/Toast';
-
-// Page title mapping
-const PAGE_TITLES = {
-  'dashboard':        'Dashboard',
-  'history':          'History',
-  'reports':          'Reports',
-  'balance-settings': 'Balance & Settings',
-};
+import { useTranslation } from '../../hooks/useTranslation';
 
 /**
  * AppShell — The main layout frame.
- * Manages the hamburger menu state and page-level navigation.
- * Renders the top header bar, slide-in drawer, and the active page content.
- *
- * @param {object} props
- * @param {string}   props.activePage   - Current page key
- * @param {function} props.onNavigate   - Callback(pageKey) to change pages
- * @param {object}   props.toast        - { visible, message, type }
- * @param {function} props.onHideToast  - Callback to clear toast
- * @param {React.ReactNode} props.children - The active page component
+ * Page title in the top bar is driven by the active language.
  */
 export default function AppShell({
   activePage,
@@ -30,6 +15,9 @@ export default function AppShell({
   children,
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { t } = useTranslation();
+
+  const pageTitle = t.pageTitles?.[activePage] ?? t.shell.appName;
 
   return (
     <div className="flex flex-col h-full w-full bg-[#0f172a] overflow-hidden">
@@ -54,10 +42,10 @@ export default function AppShell({
 
         {/* Page title */}
         <h1 className="text-sm font-semibold text-white tracking-wide">
-          {PAGE_TITLES[activePage] ?? 'Budget'}
+          {pageTitle}
         </h1>
 
-        {/* Right side spacer (keeps title centered) */}
+        {/* Right spacer (keeps title centered) */}
         <div className="w-10" aria-hidden="true" />
       </header>
 
