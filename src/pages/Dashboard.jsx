@@ -1,6 +1,7 @@
 import { useState, useRef, useId } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTranslation } from '../hooks/useTranslation';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import {
   formatAmount,
   getCurrencySymbol,
@@ -28,7 +29,11 @@ export default function Dashboard({ showToast }) {
 
   // Form state
   const [amount,       setAmount]       = useState('');
-  const [currency,     setCurrency]     = useState('RON');
+  // Currency persisted to localStorage; falls back to mainDisplayCurrency on first use
+  const [currency, setCurrency] = useLocalStorage(
+    'lastUsedExpenseCurrency',
+    settings.mainDisplayCurrency
+  );
   const [description,  setDescription]  = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -76,7 +81,7 @@ export default function Dashboard({ showToast }) {
       );
       setAmount('');
       setDescription('');
-      setCurrency('RON');
+      // Note: currency is intentionally NOT reset — it stays as lastUsedExpenseCurrency
     } else {
       showToast(t.dashboard.toastFailed, 'error');
     }
