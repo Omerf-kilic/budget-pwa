@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- ═══════════════════════════════════════════════
+         PWA / iOS Native App Meta Tags
+    ═══════════════════════════════════════════════ -->
+    <!-- Enables fullscreen mode when launched from home screen on iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- Status bar style: black-translucent blends with app header -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- App name shown under the icon on iOS home screen -->
+    <meta name="apple-mobile-web-app-title" content="Budget" />
+
+    <!-- Apple touch icon for iOS home screen -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!-- Splash screens for iOS (portrait only) -->
+    <link
+      rel="apple-touch-startup-image"
+      href="/icons/splash-1170x2532.png"
+      media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"
+    />
+
+    <!-- ═══════════════════════════════════════════════
+         Standard Viewport
+         - user-scalable=no prevents pinch-zoom for native feel
+         - viewport-fit=cover extends content behind notch/status bar
+    ═══════════════════════════════════════════════ -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- Theme color for browser chrome -->
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="msapplication-TileColor" content="#0f172a" />
+
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+
+    <!-- Google Fonts — Inter for clean mobile typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <title>Budget Tracker</title>
+    <meta
+      name="description"
+      content="Personal multi-currency budget tracker PWA. Track expenses and balances across USD, EUR, TL, and RON."
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
