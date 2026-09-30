@@ -37,24 +37,27 @@ export function AppProvider({ children }) {
    * Deducts the amount from the specific currency's balance.
    *
    * @param {number} amount
-   * @param {string} currency - USD | EUR | TL | RON
+   * @param {string} currency    - USD | EUR | TL | RON
    * @param {string} description
-   * @returns {boolean} - true on success, false if insufficient balance
+   * @param {string} category    - One of CATEGORIES[].key (defaults to 'other')
+   * @returns {boolean} - true on success
    */
   const addExpense = useCallback(
-    (amount, currency, description) => {
+    (amount, currency, description, category = 'other') => {
       const numericAmount = parseFloat(amount);
       if (!numericAmount || numericAmount <= 0) return false;
 
-      // Create the transaction record
+      // Create the transaction record (category stored for Reports chart)
       const transaction = {
         id:          uuidv4(),
         type:        'expense',
         amount:      numericAmount,
         currency,
         description: description.trim() || 'Expense',
+        category:    category || 'other',
         date:        Date.now(),
       };
+
 
       // Deduct from the matching currency balance (can go negative)
       setBalances((prev) => ({

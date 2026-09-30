@@ -6,19 +6,24 @@ import {
   formatAmount,
   getCurrencySymbol,
   CURRENCIES,
-  CURRENCY_META,
+  CATEGORIES,
+  CATEGORY_EMOJI,
   normalizeAmount,
   isValidDecimalInput,
 } from '../utils/formatters';
 
 /**
- * Dashboard — The main screen.
+ * Dashboard — Main screen.
  *
- * Features:
- * - Green balance card showing the mainDisplayCurrency with full currency name.
- *   Balance hidden by default (privacy toggle with eye icon).
- * - Blue Quick Add Expense form with comma-aware decimal input.
- * - All labels driven by the active language (useTranslation).
+ * Quick Add Expense form now includes:
+ *   - Category dropdown (required, persisted as lastUsedExpenseCategory)
+ *   - Currency selector (persisted as lastUsedExpenseCurrency)
+ *   - Optional description field
+ *   - Comma-aware amount input
+ *
+ * Balance card:
+ *   - Hidden by default (eye toggle to reveal)
+ *   - Shows full currency name (translated)
  */
 export default function Dashboard({ showToast }) {
   const { balances, settings, currencyOrder, addExpense } = useApp();
@@ -27,40 +32,42 @@ export default function Dashboard({ showToast }) {
   const amountInputId = useId();
   const descInputId   = useId();
 
-  // Form state
+  // ── Form state ────────────────────────────────────────────────────────────
+
   const [amount,       setAmount]       = useState('');
-  // Currency persisted to localStorage; falls back to mainDisplayCurrency on first use
+  const [description,  setDescription]  = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Currency remembered across sessions; falls back to mainDisplayCurrency
   const [currency, setCurrency] = useLocalStorage(
     'lastUsedExpenseCurrency',
     settings.mainDisplayCurrency
   );
-  const [description,  setDescription]  = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Balance hidden by default — tap eye to reveal
+  // Category remembered across sessions; falls back to 'food'
+  const [category, setCategory] = useLocalStorage(
+    'lastUsedExpenseCategory',
+    'food'
+  );
+
+  // Balance privacy toggle — hidden by default for privacy
   const [isBalanceVisible, setIsBalanceVisible] = useState(false);
 
   const amountRef = useRef(null);
 
-  const mainCurrency      = settings.mainDisplayCurrency;
-  const mainBalance       = balances[mainCurrency] ?? 0;
-  const isNegativeBalance = mainBalance < 0;
-
-  // Full currency name from translations (e.g. "Romanian Leu" / "Rumen Leyi")
-  const mainCurrencyFullName = t.settings.currencyNames[mainCurrency] ?? mainCurrency;
-
-  // Other currencies shown decoratively (respects user-defined order)
-  const otherCurrencies = currencyOrder.filter((c) => c !== mainCurrency);
+  const mainCurrency          = settings.mainDisplayCurrency;
+  const mainBalance           = balances[mainCurrency] ?? 0;
+  const isNegativeBalance     = mainBalance < 0;
+  const mainCurrencyFullName  = t.settings.currencyNames[mainCurrency] ?? mainCurrency;
+  const otherCurrencies       = currencyOrder.filter((c) => c !== mainCurrency);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
-  /** Validates input — accepts both '.' and ',' as decimal separators. */
   const handleAmountChange = (e) => {
     const value = e.target.value;
     if (isValidDecimalInput(value)) setAmount(value);
   };
 
-  /** Saves expense after normalizing comma separators. */
   const handleSaveExpense = () => {
     const normalized    = normalizeAmount(amount);
     const numericAmount = parseFloat(normalized);
@@ -72,7 +79,8 @@ export default function Dashboard({ showToast }) {
     }
 
     setIsSubmitting(true);
-    const success = addExpense(numericAmount, currency, description);
+    // Pass the selected category to addExpense
+    const success = addExpense(numericAmount, currency, description, category);
 
     if (success) {
       showToast(
@@ -81,7 +89,7 @@ export default function Dashboard({ showToast }) {
       );
       setAmount('');
       setDescription('');
-      // Note: currency is intentionally NOT reset — it stays as lastUsedExpenseCurrency
+      // currency and category are intentionally NOT reset — they persist
     } else {
       showToast(t.dashboard.toastFailed, 'error');
     }
@@ -98,13 +106,12 @@ export default function Dashboard({ showToast }) {
       <section aria-label={`${mainCurrency} ${t.dashboard.balanceSuffix}`}>
         <div className="balance-card rounded-3xl p-6 shadow-card-lg relative">
 
-          {/* Top row: currency + badge + eye toggle */}
+          {/* Top row: currency label + badge + eye toggle */}
           <div className="flex items-center justify-between mb-1">
             <div>
               <span className="text-xs font-semibold text-green-300/70 tracking-widest uppercase">
                 {mainCurrency} {t.dashboard.balanceSuffix}
               </span>
-              {/* Full currency name — translated */}
               <p className="text-[10px] text-green-400/50 mt-0.5">{mainCurrencyFullName}</p>
             </div>
 
@@ -112,7 +119,6 @@ export default function Dashboard({ showToast }) {
               <span className="text-xs font-medium text-green-300/60 bg-green-900/40 px-2.5 py-1 rounded-full">
                 {t.dashboard.mainCurrencyBadge}
               </span>
-              {/* Eye toggle button */}
               <button
                 id="toggle-balance-visibility"
                 onClick={() => setIsBalanceVisible((v) => !v)}
@@ -133,8 +139,7 @@ export default function Dashboard({ showToast }) {
                 ) : (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                     />
@@ -144,7 +149,7 @@ export default function Dashboard({ showToast }) {
             </div>
           </div>
 
-          {/* Balance amount — hidden or visible */}
+          {/* Balance amount */}
           <div
             id="main-balance-display"
             className={`text-4xl font-extrabold tracking-tight leading-none mt-2 transition-all duration-300 ${
@@ -154,9 +159,7 @@ export default function Dashboard({ showToast }) {
             {isBalanceVisible ? (
               formatAmount(mainBalance, mainCurrency)
             ) : (
-              <span className="tracking-widest text-3xl text-green-200/40 select-none">
-                ••••••
-              </span>
+              <span className="tracking-widest text-3xl text-green-200/40 select-none">••••••</span>
             )}
           </div>
 
@@ -188,7 +191,7 @@ export default function Dashboard({ showToast }) {
       ══════════════════════════════════════════ */}
       <section
         aria-label={t.dashboard.quickAddLabel}
-        className="quick-add-section rounded-3xl p-5 flex-1 flex flex-col gap-5"
+        className="quick-add-section rounded-3xl p-5 flex-1 flex flex-col gap-4"
       >
         <p className="text-xs font-semibold text-blue-300/60 tracking-widest uppercase text-center">
           {t.dashboard.quickAddLabel}
@@ -196,10 +199,8 @@ export default function Dashboard({ showToast }) {
 
         {/* Amount + Currency row */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex flex-col items-center">
-            <label htmlFor={amountInputId} className="sr-only">
-              {t.dashboard.quickAddLabel}
-            </label>
+          <div className="flex-1">
+            <label htmlFor={amountInputId} className="sr-only">{t.dashboard.quickAddLabel}</label>
             <input
               ref={amountRef}
               id={amountInputId}
@@ -235,13 +236,38 @@ export default function Dashboard({ showToast }) {
           </div>
         </div>
 
-        <div className="w-full h-px bg-blue-500/15" />
-
-        {/* Description input */}
+        {/* ── Category dropdown (required) ─────────────── */}
         <div>
-          <label htmlFor={descInputId} className="sr-only">
-            {t.dashboard.descPlaceholder}
+          <label
+            htmlFor="expense-category-select"
+            className="block text-xs font-medium text-blue-300/50 mb-1.5 uppercase tracking-wider"
+          >
+            {t.dashboard.categoryLabel}
           </label>
+          <select
+            id="expense-category-select"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="
+              w-full bg-blue-900/50 text-white text-sm font-medium
+              border border-blue-500/20 rounded-xl px-3 py-3
+              focus:outline-none focus:ring-2 focus:ring-blue-400/30
+              transition-colors appearance-none
+            "
+            aria-label={t.dashboard.categoryLabel}
+            required
+          >
+            {CATEGORIES.map(({ key, emoji }) => (
+              <option key={key} value={key} className="bg-slate-800">
+                {emoji} {t.categories[key]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* ── Description (optional) ────────────────────── */}
+        <div>
+          <label htmlFor={descInputId} className="sr-only">{t.dashboard.descPlaceholder}</label>
           <input
             id={descInputId}
             type="text"
@@ -284,7 +310,8 @@ export default function Dashboard({ showToast }) {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
               </svg>
-              {t.dashboard.saveButton}
+              {/* Show selected category emoji next to label */}
+              {CATEGORY_EMOJI[category]} {t.dashboard.saveButton}
             </>
           )}
         </button>

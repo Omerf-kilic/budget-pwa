@@ -16,6 +16,50 @@ export const CURRENCY_META = {
 
 export const CURRENCIES = Object.keys(CURRENCY_META);
 
+// ─── Expense Categories ───────────────────────────────────────────────────────
+
+/**
+ * Master list of expense categories.
+ * key:   stored in localStorage on each transaction
+ * emoji: displayed in UI and transaction history
+ */
+export const CATEGORIES = [
+  { key: 'food',          emoji: '🍔' },
+  { key: 'coffee',        emoji: '☕️' },
+  { key: 'groceries',     emoji: '🛒' },
+  { key: 'bills',         emoji: '🧾' },
+  { key: 'rent',          emoji: '🏠' },
+  { key: 'transport',     emoji: '🚌' },
+  { key: 'entertainment', emoji: '🎬' },
+  { key: 'clothing',      emoji: '👕' },
+  { key: 'electronics',   emoji: '💻' },
+  { key: 'sports',        emoji: '🏋️' },
+  { key: 'education',     emoji: '📚' },
+  { key: 'other',         emoji: '📦' },
+];
+
+/** Quick emoji lookup by category key */
+export const CATEGORY_EMOJI = Object.fromEntries(
+  CATEGORIES.map((c) => [c.key, c.emoji])
+);
+
+/** Distinct chart color for each category */
+export const CATEGORY_COLORS = {
+  food:          '#f97316',
+  coffee:        '#a16207',
+  groceries:     '#22c55e',
+  bills:         '#ef4444',
+  rent:          '#8b5cf6',
+  transport:     '#3b82f6',
+  entertainment: '#ec4899',
+  clothing:      '#06b6d4',
+  electronics:   '#6366f1',
+  sports:        '#84cc16',
+  education:     '#f59e0b',
+  other:         '#6b7280',
+};
+
+
 /**
  * Formats a numeric amount with the appropriate currency symbol.
  * Example: formatAmount(1234.5, 'RON') → '1.234,50 lei'
@@ -167,4 +211,41 @@ export function sumExpensesByCurrency(transactions, startTime, endTime) {
   });
 
   return totals;
+}
+
+/**
+ * Groups expense transactions by category for a given time window.
+ * Returns per-category transaction counts and per-currency amount sums.
+ *
+ * Backward compatibility: transactions without a 'category' field → 'other'.
+ *
+ * @param {Array}  transactions
+ * @param {number} startTime - timestamp (ms)
+ * @param {number} endTime   - timestamp (ms)
+ * @returns {Object} {
+ *   food: { count: N, amounts: { USD: 0, EUR: 0, TL: 0, RON: 0 } },
+ *   coffee: { ... }, ...
+ * }
+ */
+export function categorizeExpenses(transactions, startTime, endTime) {
+  // Initialise all categories with zero counts and zero per-currency amounts
+  const result = {};
+  CATEGORIES.forEach((c) => {
+    result[c.key] = { count: 0, amounts: { USD: 0, EUR: 0, TL: 0, RON: 0 } };
+  });
+
+  transactions.forEach((tx) => {
+    if (tx.type !== 'expense') return;
+    if (tx.date < startTime || tx.date > endTime) return;
+
+    // Old transactions without a category field default to 'other'
+    const cat =
+      tx.category && result[tx.category] ? tx.category : 'other';
+
+    result[cat].count += 1;
+    result[cat].amounts[tx.currency] =
+      (result[cat].amounts[tx.currency] ?? 0) + tx.amount;
+  });
+
+  return result;
 }

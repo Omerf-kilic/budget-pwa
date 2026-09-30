@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTranslation } from '../hooks/useTranslation';
-import { formatAmount, formatDate } from '../utils/formatters';
+import { formatAmount, formatDate, CATEGORY_EMOJI } from '../utils/formatters';
 
 /**
  * History — Displays all transactions in reverse-chronological order.
- * All text labels are driven by the active language.
+ * Shows category emoji on expense rows (old transactions without category → 📦 Other).
  */
 export default function History() {
   const { transactions, deleteTransaction } = useApp();
@@ -27,9 +27,7 @@ export default function History() {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-slate-300">
-          {t.history.title}
-        </h2>
+        <h2 className="text-sm font-semibold text-slate-300">{t.history.title}</h2>
         <span className="text-xs text-slate-500 bg-slate-800 px-2.5 py-1 rounded-full">
           {transactions.length} {t.history.totalSuffix}
         </span>
@@ -59,13 +57,18 @@ export default function History() {
             const isExpense    = tx.type === 'expense';
             const isConfirming = confirmDeleteId === tx.id;
 
+            // Show category emoji for expenses (backward compat: fallback to 'other' emoji)
+            const catEmoji = isExpense
+              ? (CATEGORY_EMOJI[tx.category] ?? CATEGORY_EMOJI['other'])
+              : null;
+
             return (
               <li
                 key={tx.id}
                 className="glass-card rounded-2xl px-4 py-3.5 flex items-center gap-3"
                 role="listitem"
               >
-                {/* Type icon */}
+                {/* Type / category icon */}
                 <div
                   className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                     isExpense ? 'bg-red-500/15' : 'bg-green-500/15'
@@ -73,12 +76,13 @@ export default function History() {
                   aria-hidden="true"
                 >
                   {isExpense ? (
-                    <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                    </svg>
+                    /* Show category emoji for expenses */
+                    <span className="text-lg leading-none">{catEmoji}</span>
                   ) : (
+                    /* Income: up-arrow icon */
                     <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M5 10l7-7m0 0l7 7m-7-7v18" />
                     </svg>
                   )}
                 </div>
