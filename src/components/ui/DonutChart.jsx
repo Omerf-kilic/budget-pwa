@@ -9,36 +9,36 @@
  *   - Percentages MUST be amount-based (monetary share), not count-based.
  *
  * @param {Array}  props.segments      - [{ key, label, emoji, color, amountTotal, percentage }]
- * @param {string} [props.centerValue] - Main text shown in center (e.g. formatted total amount)
- * @param {string} [props.centerLabel] - Secondary text below (e.g. "Total" / "Toplam")
+ * @param {string} [props.centerLine1] - Main text in center (e.g. "€380")
+ * @param {string} [props.centerLine2] - Secondary label (e.g. "Total" / "Toplam")
  */
-export default function DonutChart({ segments, centerValue = '', centerLabel = '' }) {
+export default function DonutChart({ segments, centerLine1 = '', centerLine2 = '' }) {
   const R  = 15.9155; // radius giving circumference ≈ 100
   const CX = 18;
   const CY = 18;
-  const STROKE_WIDTH = 4;
+  const STROKE_WIDTH = 3.8;
 
   // Only draw segments with a non-zero amount
   const active = segments.filter((s) => (s.amountTotal ?? 0) > 0);
-
   if (active.length === 0) return null;
 
   // Build arc descriptors, accumulating the dashoffset per segment
   let cumulative = 0;
   const arcs = active.map((seg) => {
-    const pct    = seg.percentage; // amount-based 0-100
+    const pct    = seg.percentage; // amount-based 0–100
     const offset = cumulative;
     cumulative  += pct;
     return { ...seg, pct, offset };
   });
 
-  // Decide font size for centerValue based on string length so it fits the hole
-  const centerFontSize = centerValue.length > 6 ? 3.2 : centerValue.length > 4 ? 3.8 : 4.8;
+  // Dynamic font size for centerLine1 so it always fits the hole
+  const len1 = centerLine1.length;
+  const fs1  = len1 > 8 ? 2.8 : len1 > 6 ? 3.2 : len1 > 4 ? 3.8 : 4.6;
 
   return (
     <svg
       viewBox="0 0 36 36"
-      className="w-full max-w-[220px] mx-auto"
+      className="w-full"
       role="img"
       aria-label="Expense category donut chart"
     >
@@ -67,25 +67,25 @@ export default function DonutChart({ segments, centerValue = '', centerLabel = '
         ))}
       </g>
 
-      {/* Center: total amount (line 1) + label (line 2) */}
+      {/* Center: amount (line 1) + label (line 2) */}
       <text
         x={CX} y={CY - 2}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize={centerFontSize}
+        fontSize={fs1}
         fontWeight="700"
         fill="white"
       >
-        {centerValue}
+        {centerLine1}
       </text>
       <text
-        x={CX} y={CY + 4.5}
+        x={CX} y={CY + 4.2}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize="2.5"
-        fill="rgba(148,163,184,0.7)"
+        fontSize="2.4"
+        fill="rgba(148,163,184,0.65)"
       >
-        {centerLabel}
+        {centerLine2}
       </text>
     </svg>
   );
