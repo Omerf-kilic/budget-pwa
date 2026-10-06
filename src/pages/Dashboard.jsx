@@ -4,8 +4,6 @@ import { useTranslation } from '../hooks/useTranslation';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import {
   formatAmount,
-  getCurrencySymbol,
-  CURRENCIES,
   CATEGORIES,
   CATEGORY_EMOJI,
   normalizeAmount,
@@ -26,7 +24,7 @@ import {
  *   - Shows full currency name (translated)
  */
 export default function Dashboard({ showToast }) {
-  const { balances, settings, currencyOrder, addExpense } = useApp();
+  const { balances, settings, currencyOrder, addExpense, currencies, getSymbol } = useApp();
   const { t } = useTranslation();
 
   const amountInputId = useId();
@@ -229,7 +227,7 @@ export default function Dashboard({ showToast }) {
               "
               aria-label="Select currency"
             >
-              {CURRENCIES.map((c) => (
+              {currencies.map((c) => (
                 <option key={c} value={c} className="bg-slate-800">{c}</option>
               ))}
             </select>

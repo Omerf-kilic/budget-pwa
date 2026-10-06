@@ -1,7 +1,7 @@
 import { createContext, useContext, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import { DEFAULT_CURRENCY_ORDER } from '../utils/formatters';
+import { DEFAULT_CURRENCY_ORDER, CURRENCY_META } from '../utils/formatters';
 
 // ─── Initial State ───────────────────────────────────────────────────────────
 
@@ -29,8 +29,38 @@ export function AppProvider({ children }) {
   const [balances, setBalances]         = useLocalStorage('budget_balances', INITIAL_BALANCES);
   const [transactions, setTransactions] = useLocalStorage('budget_transactions', []);
   const [settings, setSettings]         = useLocalStorage('budget_settings', INITIAL_SETTINGS);
-  // User's preferred currency display order for the drag-and-drop list
   const [currencyOrder, setCurrencyOrderRaw] = useLocalStorage('budget_currency_order', DEFAULT_CURRENCY_ORDER);
+  const [customCurrencies, setCustomCurrencies] = useLocalStorage('budget_custom_currencies', []);
+
+  // Compute merged currencies and meta for the app to consume
+  const allCurrencyCodes = [
+    ...DEFAULT_CURRENCY_ORDER.filter(c => !customCurrencies.some(cc => cc.code === c)),
+    ...customCurrencies.map(c => c.code)
+  ];
+  
+  // Make sure currencyOrder only includes valid ones, and appends any missing customs
+  const activeCurrencyOrder = [
+    ...currencyOrder.filter(c => allCurrencyCodes.includes(c)),
+    ...allCurrencyCodes.filter(c => !currencyOrder.includes(c))
+  ];
+
+  // Provide a getSymbol function closed over custom properties
+  const getSymbol = useCallback((code) => {
+    const custom = customCurrencies.find(c => c.code === code);
+    if (custom) return custom.symbol;
+    return CURRENCY_META[code]?.symbol ?? code;
+  }, [customCurrencies]);
+
+  const addCustomCurrency = useCallback((code, symbol) => {
+    const upperCode = code.trim().toUpperCase();
+    if (!upperCode || !symbol.trim()) return false;
+    
+    setCustomCurrencies(prev => {
+      if (prev.some(c => c.code === upperCode)) return prev;
+      return [...prev, { code: upperCode, symbol: symbol.trim() }];
+    });
+    return true;
+  }, [setCustomCurrencies]);
 
   /**
    * Saves an expense transaction.
@@ -188,6 +218,69 @@ export function AppProvider({ children }) {
   );
 
   /**
+   * Bulk soft-delete transactions.
+   */
+  const bulkDeleteTransactions = useCallback(
+    (ids) => {
+      setTransactions((prev) => {
+        let updatedBals = { ...balances };
+        let anyChanged = false;
+        const next = prev.map((t) => {
+          if (ids.includes(t.id) && !t.isDeleted) {
+            anyChanged = true;
+            // Reverse balance
+            updatedBals[t.currency] = t.type === 'expense'
+              ? parseFloat(((updatedBals[t.currency] ?? 0) + t.amount).toFixed(2))
+              : parseFloat(((updatedBals[t.currency] ?? 0) - t.amount).toFixed(2));
+            return { ...t, isDeleted: true };
+          }
+          return t;
+        });
+        if (anyChanged) setBalances(updatedBals);
+        return next;
+      });
+    },
+    [balances, setBalances, setTransactions]
+  );
+
+  /**
+   * Bulk restore soft-deleted transactions.
+   */
+  const bulkRestoreTransactions = useCallback(
+    (ids) => {
+      setTransactions((prev) => {
+        let updatedBals = { ...balances };
+        let anyChanged = false;
+        const next = prev.map((t) => {
+          if (ids.includes(t.id) && t.isDeleted) {
+            anyChanged = true;
+            // Re-apply balance
+            updatedBals[t.currency] = t.type === 'expense'
+              ? parseFloat(((updatedBals[t.currency] ?? 0) - t.amount).toFixed(2))
+              : parseFloat(((updatedBals[t.currency] ?? 0) + t.amount).toFixed(2));
+            const { isDeleted, ...rest } = t;
+            return rest;
+          }
+          return t;
+        });
+        if (anyChanged) setBalances(updatedBals);
+        return next;
+      });
+    },
+    [balances, setBalances, setTransactions]
+  );
+
+  /**
+   * Bulk permanently purge soft-deleted transactions.
+   */
+  const bulkPurgeTransactions = useCallback(
+    (ids) => {
+      setTransactions((prev) => prev.filter((t) => !ids.includes(t.id)));
+    },
+    [setTransactions]
+  );
+
+  /**
    * Permanently removes all soft-deleted transactions.
    */
   const emptyTrash = useCallback(() => {
@@ -223,7 +316,10 @@ export function AppProvider({ children }) {
     balances,
     transactions,
     settings,
-    currencyOrder,
+    currencyOrder: activeCurrencyOrder,
+    currencies: allCurrencyCodes,
+    getSymbol,
+    addCustomCurrency,
     addExpense,
     addBalance,
     setMainCurrency,
@@ -231,6 +327,9 @@ export function AppProvider({ children }) {
     deleteTransaction,
     restoreTransaction,
     purgeTransaction,
+    bulkDeleteTransactions,
+    bulkRestoreTransactions,
+    bulkPurgeTransactions,
     emptyTrash,
     setCurrencyOrder,
   };

@@ -68,9 +68,12 @@ export const CATEGORY_COLORS = {
  * @param {string} currency - One of USD | EUR | TL | RON
  * @returns {string}
  */
-export function formatAmount(amount, currency) {
+export function formatAmount(amount, currency, customSymbol = null) {
   const meta = CURRENCY_META[currency];
-  if (!meta) return `${amount} ${currency}`;
+  if (!meta) {
+    const sym = customSymbol || currency;
+    return `${sym}${amount.toFixed(2)}`;
+  }
 
   try {
     return new Intl.NumberFormat(meta.locale, {

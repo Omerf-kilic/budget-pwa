@@ -1,36 +1,32 @@
 import { useState, useId, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTranslation } from '../hooks/useTranslation';
-import {
-  formatAmount,
-  getCurrencySymbol,
-  CURRENCY_META,
-  normalizeAmount,
-  isValidDecimalInput,
-} from '../utils/formatters';
-
+import { formatAmount, normalizeAmount, isValidDecimalInput } from '../utils/formatters';
 
 const LANGUAGES = ['en', 'tr'];
 
 /**
- * BalanceSettings — Three sections:
+ * BalanceSettings — Four sections:
  *   1. Add Balance: Draggable currency list with per-currency amount inputs.
  *   2. Main Display Currency: Radio selector for the green card on Dashboard.
- *   3. Language / Dil: Switch between English and Turkish.
- *
- * All text labels are driven by the active language (useTranslation).
+ *   3. Custom Currency Builder: Add a new currency dynamically.
+ *   4. Language / Dil: Switch between English and Turkish.
  */
 export default function BalanceSettings({ showToast }) {
   const {
-    balances, settings, currencyOrder,
-    addBalance, setMainCurrency, setLanguage, setCurrencyOrder,
+    balances, settings, currencyOrder, currencies, getSymbol,
+    addBalance, setMainCurrency, setLanguage, setCurrencyOrder, addCustomCurrency
   } = useApp();
   const { t, lang } = useTranslation();
 
-  // Per-currency form state
-  const [amounts,      setAmounts]      = useState({ USD: '', EUR: '', TL: '', RON: '' });
-  const [descriptions, setDescriptions] = useState({ USD: '', EUR: '', TL: '', RON: '' });
+  // ─── Per-currency form state ──────────────────────────────────────────────
+  const [amounts,      setAmounts]      = useState({});
+  const [descriptions, setDescriptions] = useState({});
   const [loadingCurrency, setLoadingCurrency] = useState(null);
+
+  // ─── Custom Currency form state ───────────────────────────────────────────
+  const [customCode, setCustomCode] = useState('');
+  const [customSym, setCustomSym] = useState('');
 
   const formBaseId = useId();
 
@@ -53,50 +49,56 @@ export default function BalanceSettings({ showToast }) {
     setOverIdx(null);
   };
 
-  // Desktop HTML5 drag
   const handleDragStart = (idx) => { dragRef.current.from = idx; dragRef.current.to = idx; setDraggingIdx(idx); };
   const handleDragOver  = (e, idx) => { e.preventDefault(); if (dragRef.current.to !== idx) { dragRef.current.to = idx; setOverIdx(idx); } };
   const handleDrop      = (e) => { e.preventDefault(); commitReorder(); };
   const handleDragEnd   = () => commitReorder();
 
-  // Mobile touch start
-  const handleTouchStart = (e, idx) => { dragRef.current.from = idx; dragRef.current.to = idx; setDraggingIdx(idx); };
-  const handleTouchEnd   = () => commitReorder();
-
-  // Non-passive touchmove listener (must be added via useEffect, not React props)
+  // Touch drag
   useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
+    const listEl = listRef.current;
+    if (!listEl) return;
+    
+    let activeEl = null;
 
     const onTouchMove = (e) => {
       if (dragRef.current.from === null) return;
-      e.preventDefault();
+      e.preventDefault(); // stop scrolling
       const touch = e.touches[0];
-      const cards = el.querySelectorAll('[data-drag-card]');
-      for (let i = 0; i < cards.length; i++) {
-        const rect = cards[i].getBoundingClientRect();
-        if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
-          if (dragRef.current.to !== i) { dragRef.current.to = i; setOverIdx(i); }
-          break;
+      const target = document.elementFromPoint(touch.clientX, touch.clientY);
+      const li = target?.closest('li[data-idx]');
+      if (li) {
+        const idx = parseInt(li.getAttribute('data-idx'), 10);
+        if (idx !== dragRef.current.to) {
+          dragRef.current.to = idx;
+          setOverIdx(idx);
         }
       }
     };
+    const onTouchEnd = () => commitReorder();
 
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    return () => el.removeEventListener('touchmove', onTouchMove);
-  }, []);
+    listEl.addEventListener('touchmove', onTouchMove, { passive: false });
+    listEl.addEventListener('touchend', onTouchEnd);
+    listEl.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      listEl.removeEventListener('touchmove', onTouchMove);
+      listEl.removeEventListener('touchend', onTouchEnd);
+      listEl.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [currencyOrder]);
 
-  // ─── Form Handlers ────────────────────────────────────────────────────────
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
-  const handleAmountChange = (currency, value) => {
-    if (isValidDecimalInput(value)) {
-      setAmounts((prev) => ({ ...prev, [currency]: value }));
-    }
+  const handleAmountChange = (currency, val) => {
+    if (isValidDecimalInput(val)) setAmounts(p => ({ ...p, [currency]: val }));
+  };
+  const handleDescChange = (currency, val) => {
+    setDescriptions(p => ({ ...p, [currency]: val }));
   };
 
   const handleAddBalance = (currency) => {
-    const normalized    = normalizeAmount(amounts[currency]);
-    const numericAmount = parseFloat(normalized);
+    const val = amounts[currency] || '';
+    const numericAmount = parseFloat(normalizeAmount(val));
 
     if (!numericAmount || numericAmount <= 0) {
       showToast(t.settings.toastInvalidAmount(currency), 'error');
@@ -104,20 +106,16 @@ export default function BalanceSettings({ showToast }) {
     }
 
     setLoadingCurrency(currency);
-    const description = descriptions[currency].trim() || t.settings.addBalanceTitle;
+    const description = (descriptions[currency] || '').trim() || t.settings.addBalanceTitle;
     const success     = addBalance(numericAmount, currency, description);
 
     if (success) {
       showToast(
-        t.settings.toastBalanceAdded(
-          getCurrencySymbol(currency),
-          numericAmount.toFixed(2),
-          currency
-        ),
+        t.settings.toastBalanceAdded(getSymbol(currency), numericAmount.toFixed(2), currency),
         'success'
       );
-      setAmounts((prev)      => ({ ...prev, [currency]: '' }));
-      setDescriptions((prev) => ({ ...prev, [currency]: '' }));
+      setAmounts(p => ({ ...p, [currency]: '' }));
+      setDescriptions(p => ({ ...p, [currency]: '' }));
     } else {
       showToast(t.settings.toastFailed, 'error');
     }
@@ -125,13 +123,25 @@ export default function BalanceSettings({ showToast }) {
     setTimeout(() => setLoadingCurrency(null), 300);
   };
 
+  const handleAddCustomCurrency = (e) => {
+    e.preventDefault();
+    if (addCustomCurrency(customCode, customSym)) {
+      showToast(t.settings.toastCustomCurrencyAdded, 'success');
+      setCustomCode('');
+      setCustomSym('');
+    }
+  };
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
-  const currencyColors = {
-    USD: { bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
-    EUR: { bg: 'bg-blue-500/15',    text: 'text-blue-400'    },
-    TL:  { bg: 'bg-orange-500/15',  text: 'text-orange-400'  },
-    RON: { bg: 'bg-purple-500/15',  text: 'text-purple-400'  },
+  const getCurrencyStyle = (code) => {
+    const styles = {
+      USD: { bg: 'bg-emerald-500/15', text: 'text-emerald-400' },
+      EUR: { bg: 'bg-blue-500/15',    text: 'text-blue-400'    },
+      TL:  { bg: 'bg-orange-500/15',  text: 'text-orange-400'  },
+      RON: { bg: 'bg-purple-500/15',  text: 'text-purple-400'  },
+    };
+    return styles[code] || { bg: 'bg-slate-500/15', text: 'text-slate-400' };
   };
 
   return (
@@ -140,284 +150,249 @@ export default function BalanceSettings({ showToast }) {
       {/* ══════════════════════════════════════════
           Section 1: Add Balance (Draggable)
       ══════════════════════════════════════════ */}
-      <section aria-labelledby="add-balance-heading">
-        <div className="flex items-center justify-between mb-3">
-          <h2 id="add-balance-heading" className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+      <section aria-labelledby={`${formBaseId}-add-title`}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 id={`${formBaseId}-add-title`} className="text-lg font-bold text-white">
             {t.settings.addBalanceTitle}
           </h2>
-          <span className="text-[10px] text-slate-600 flex items-center gap-1">
+          <span className="text-xs font-medium text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded flex items-center gap-1">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h8M8 15h8" />
             </svg>
             {t.settings.dragHint}
           </span>
         </div>
 
-        <div ref={listRef} className="space-y-2.5" onTouchEnd={handleTouchEnd}>
-          {currencyOrder.map((currency, index) => {
-            const colors         = currencyColors[currency];
-            const currentBalance = balances[currency] ?? 0;
-            const isNegative     = currentBalance < 0;
-            const isLoading      = loadingCurrency === currency;
-            const isDragging     = draggingIdx === index;
-            const isOver         = overIdx === index && draggingIdx !== index;
+        <ul ref={listRef} className="space-y-3 relative touch-pan-y" role="list">
+          {currencyOrder.map((currency, idx) => {
+            const isDragging = draggingIdx === idx;
+            const isOver     = overIdx === idx && !isDragging;
+            const { bg, text } = getCurrencyStyle(currency);
+            
+            // Reordering visual feedback styles
+            let dragClasses = '';
+            if (isDragging) dragClasses = 'opacity-0 scale-95';
+            else if (isOver && draggingIdx !== null) {
+              dragClasses = draggingIdx < idx
+                ? 'translate-y-[-8px] shadow-[0_4px_0_rgba(255,255,255,0.05)]'
+                : 'translate-y-[8px] shadow-[0_-4px_0_rgba(255,255,255,0.05)]';
+            }
 
             return (
-              <div
+              <li
                 key={currency}
-                id={`balance-card-${currency}`}
-                data-drag-card
+                data-idx={idx}
+                className={`transition-all duration-200 ${dragClasses}`}
                 draggable
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e)  => handleDragOver(e, index)}
-                onDrop={(e)      => handleDrop(e)}
+                onDragStart={() => handleDragStart(idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDrop={handleDrop}
                 onDragEnd={handleDragEnd}
-                className={`
-                  glass-card rounded-2xl p-4 space-y-3 select-none
-                  transition-all duration-150
-                  ${isDragging ? 'opacity-40 scale-[0.97]' : 'opacity-100 scale-100'}
-                  ${isOver ? 'border border-green-400/50 shadow-glow' : ''}
-                `}
-                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
               >
-                {/* Card header: drag handle + currency info + balance */}
-                <div className="flex items-center gap-3">
-                  {/* Drag handle */}
-                  <div
-                    className="flex flex-col gap-[3px] px-1 py-2 shrink-0 cursor-grab active:cursor-grabbing touch-none"
-                    onTouchStart={(e) => handleTouchStart(e, index)}
-                    role="button"
-                    tabIndex={-1}
-                    aria-label={`Drag to reorder ${currency}`}
-                  >
-                    {[0, 1, 2].map((i) => (
-                      <span key={i} className="block w-4 h-[2.5px] bg-slate-600 rounded-full" />
-                    ))}
-                  </div>
+                <div className="glass-card rounded-2xl p-4 cursor-grab active:cursor-grabbing hover:bg-slate-800/80">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-5 flex justify-center text-slate-600 shrink-0 touch-none"
+                      onTouchStart={() => { dragRef.current.from = idx; dragRef.current.to = idx; setDraggingIdx(idx); }}
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 5a2 2 0 100-4 2 2 0 000 4zm6-2a2 2 0 11-4 0 2 2 0 014 0zM9 13a2 2 0 100-4 2 2 0 000 4zm6-2a2 2 0 11-4 0 2 2 0 014 0zM9 21a2 2 0 100-4 2 2 0 000 4zm6-2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
 
-                  {/* Currency icon */}
-                  <div className={`w-9 h-9 rounded-xl ${colors.bg} flex items-center justify-center shrink-0`}>
-                    <span className={`text-xs font-bold ${colors.text}`}>
-                      {CURRENCY_META[currency].symbol}
-                    </span>
-                  </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${bg} ${text}`}>
+                            {getSymbol(currency)}
+                          </span>
+                          <span className="font-bold text-white tracking-wide">{currency}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+                            {t.settings.balanceLabel}
+                          </p>
+                          <p className={`text-sm font-bold leading-none ${text}`}>
+                            {formatAmount(balances[currency] ?? 0, currency, getSymbol(currency))}
+                          </p>
+                        </div>
+                      </div>
 
-                  {/* Currency name */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white">{currency}</p>
-                    <p className="text-[10px] text-slate-500">
-                      {t.settings.currencyNames[currency]}
-                    </p>
-                  </div>
+                      <div className="flex items-center gap-2 mt-3" onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+                        <div className="flex-1 flex flex-col gap-2">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder={t.settings.amountPlaceholder}
+                            value={amounts[currency] || ''}
+                            onChange={(e) => handleAmountChange(currency, e.target.value)}
+                            className="w-full bg-slate-900/50 text-white text-sm border border-slate-700/50 rounded-xl px-3 py-2.5 placeholder:text-slate-600 focus:outline-none focus:border-green-500/40 focus:ring-1 focus:ring-green-500/40 transition-colors"
+                          />
+                          <input
+                            type="text"
+                            placeholder={t.settings.notePlaceholder}
+                            value={descriptions[currency] || ''}
+                            onChange={(e) => handleDescChange(currency, e.target.value)}
+                            maxLength={40}
+                            className="w-full bg-slate-900/50 text-white text-xs border border-slate-700/50 rounded-xl px-3 py-2 placeholder:text-slate-600 focus:outline-none focus:border-green-500/40 focus:ring-1 focus:ring-green-500/40 transition-colors"
+                            onKeyDown={(e) => { if (e.key === 'Enter') handleAddBalance(currency); }}
+                          />
+                        </div>
 
-                  {/* Balance */}
-                  <div className="text-right shrink-0">
-                    <p className="text-[10px] text-slate-500">{t.settings.balanceLabel}</p>
-                    <p className={`text-sm font-bold ${isNegative ? 'text-red-400' : 'text-white'}`}>
-                      {formatAmount(currentBalance, currency)}
-                    </p>
+                        <button
+                          onClick={() => handleAddBalance(currency)}
+                          disabled={loadingCurrency === currency}
+                          className="h-full min-h-[82px] px-4 rounded-xl font-bold text-sm text-green-900 bg-green-400 hover:bg-green-300 active:bg-green-500 transition-colors btn-press disabled:opacity-50 shrink-0"
+                        >
+                          {loadingCurrency === currency ? (
+                            <span className="inline-block w-4 h-4 border-2 border-green-900/30 border-t-green-900 rounded-full animate-spin" />
+                          ) : (
+                            t.settings.addButton
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                {/* Amount + Add button */}
-                <div className="flex gap-2">
-                  <input
-                    id={`${formBaseId}-amount-${currency}`}
-                    type="text"
-                    inputMode="decimal"
-                    placeholder={t.settings.amountPlaceholder}
-                    value={amounts[currency]}
-                    onChange={(e) => handleAmountChange(currency, e.target.value)}
-                    className="
-                      flex-1 bg-slate-800/70 text-white text-sm
-                      border border-white/8 rounded-xl px-3 py-2.5
-                      placeholder:text-slate-600 focus:outline-none
-                      focus:ring-2 focus:ring-green-500/30
-                    "
-                    aria-label={`Amount to add to ${currency}`}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddBalance(currency); }}
-                  />
-                  <button
-                    id={`add-balance-btn-${currency}`}
-                    onClick={() => handleAddBalance(currency)}
-                    disabled={isLoading}
-                    className="
-                      shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold text-white
-                      bg-green-600 hover:bg-green-500 active:bg-green-700
-                      transition-all duration-150 btn-press disabled:opacity-60
-                    "
-                    aria-label={`Add balance to ${currency}`}
-                  >
-                    {isLoading ? (
-                      <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      t.settings.addButton
-                    )}
-                  </button>
-                </div>
-
-                {/* Note input */}
-                <input
-                  id={`${formBaseId}-desc-${currency}`}
-                  type="text"
-                  placeholder={t.settings.notePlaceholder}
-                  value={descriptions[currency]}
-                  onChange={(e) =>
-                    setDescriptions((prev) => ({ ...prev, [currency]: e.target.value }))
-                  }
-                  maxLength={60}
-                  className="
-                    w-full bg-slate-800/40 text-white text-sm
-                    border border-white/5 rounded-xl px-3 py-2
-                    placeholder:text-slate-700 focus:outline-none
-                    focus:ring-1 focus:ring-green-500/20
-                  "
-                  aria-label={`Note for ${currency}`}
-                />
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </section>
 
       {/* ══════════════════════════════════════════
-          Section 2: Main Display Currency
+          Section 2: Custom Currency Builder
       ══════════════════════════════════════════ */}
-      <section aria-labelledby="main-currency-heading">
-        <h2 id="main-currency-heading" className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+      <section className="glass-card rounded-2xl p-5" aria-labelledby={`${formBaseId}-custom-currency`}>
+        <h2 id={`${formBaseId}-custom-currency`} className="text-base font-bold text-white mb-4">
+          {t.settings.customCurrencyTitle}
+        </h2>
+        
+        <form onSubmit={handleAddCustomCurrency} className="flex gap-2">
+          <input
+            type="text"
+            value={customCode}
+            onChange={(e) => setCustomCode(e.target.value)}
+            placeholder={t.settings.currencyCodePlaceholder}
+            className="flex-1 w-0 bg-slate-900/50 text-white text-sm border border-slate-700/50 rounded-xl px-3 py-2.5 uppercase placeholder:normal-case placeholder:text-slate-600 focus:outline-none focus:border-blue-500/40"
+            required
+            maxLength={5}
+          />
+          <input
+            type="text"
+            value={customSym}
+            onChange={(e) => setCustomSym(e.target.value)}
+            placeholder={t.settings.currencySymbolPlaceholder}
+            className="w-20 bg-slate-900/50 text-white text-sm border border-slate-700/50 rounded-xl px-3 py-2.5 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/40"
+            required
+            maxLength={3}
+          />
+          <button
+            type="submit"
+            className="px-4 rounded-xl font-bold text-sm text-blue-900 bg-blue-400 hover:bg-blue-300 transition-colors btn-press"
+          >
+            {t.settings.addButton}
+          </button>
+        </form>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          Section 3: Main Display Currency
+      ══════════════════════════════════════════ */}
+      <section className="glass-card rounded-2xl p-5" aria-labelledby={`${formBaseId}-main-title`}>
+        <h2 id={`${formBaseId}-main-title`} className="text-base font-bold text-white mb-1">
           {t.settings.mainCurrencyTitle}
         </h2>
-        <p className="text-xs text-slate-600 mb-3">{t.settings.mainCurrencySubtitle}</p>
+        <p className="text-xs text-slate-500 mb-4">
+          {t.settings.mainCurrencySubtitle}
+        </p>
 
-        <div className="glass-card rounded-2xl p-2 space-y-1" role="radiogroup" aria-labelledby="main-currency-heading">
-          {currencyOrder.map((currency) => {
-            const isSelected = settings.mainDisplayCurrency === currency;
-            const colors     = currencyColors[currency];
+        <div className="grid grid-cols-2 gap-2" role="radiogroup">
+          {currencies.map((c) => {
+            const isSelected = settings.mainDisplayCurrency === c;
+            const name = t.settings.currencyNames[c] || c;
 
             return (
-              <button
-                key={currency}
-                id={`main-currency-${currency}`}
-                role="radio"
-                aria-checked={isSelected}
-                onClick={() => {
-                  setMainCurrency(currency);
-                  showToast(t.settings.toastMainCurrency(currency), 'info');
-                }}
+              <label
+                key={c}
                 className={`
-                  w-full flex items-center gap-3 px-4 py-3.5 rounded-xl
-                  transition-all duration-150 btn-press
+                  relative flex flex-col items-center justify-center p-3 rounded-xl cursor-pointer border-2 transition-all btn-press
                   ${isSelected
-                    ? 'bg-green-600/15 border border-green-600/25'
-                    : 'border border-transparent hover:bg-white/3'
+                    ? 'bg-green-500/10 border-green-500 text-green-400'
+                    : 'bg-slate-800/50 border-transparent text-slate-400 hover:bg-slate-700 hover:text-white'
                   }
                 `}
               >
-                {/* Radio indicator */}
-                <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150
-                    ${isSelected ? 'border-green-500 bg-green-500' : 'border-slate-600'}`}
-                  aria-hidden="true"
-                >
-                  {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
-                </div>
-
-                {/* Icon + label */}
-                <div className="flex items-center gap-2.5 flex-1">
-                  <div className={`w-7 h-7 rounded-lg ${colors.bg} flex items-center justify-center`}>
-                    <span className={`text-[10px] font-bold ${colors.text}`}>
-                      {CURRENCY_META[currency].symbol}
-                    </span>
+                <input
+                  type="radio"
+                  name="main-currency"
+                  value={c}
+                  checked={isSelected}
+                  onChange={() => {
+                    setMainCurrency(c);
+                    showToast(t.settings.toastMainCurrency(c), 'success');
+                  }}
+                  className="sr-only"
+                />
+                <span className="text-sm font-bold mb-0.5">{c}</span>
+                <span className="text-[10px] text-center opacity-80 leading-tight">
+                  {name}
+                </span>
+                {isSelected && (
+                  <div className="absolute top-2 right-2">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" clipRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      />
+                    </svg>
                   </div>
-                  <div className="text-left">
-                    <p className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
-                      {currency}
-                    </p>
-                    <p className="text-[10px] text-slate-600">{t.settings.currencyNames[currency]}</p>
-                  </div>
-                </div>
-
-                {/* Balance preview */}
-                <p className="text-xs text-slate-500 font-medium">
-                  {formatAmount(balances[currency] ?? 0, currency)}
-                </p>
-              </button>
+                )}
+              </label>
             );
           })}
         </div>
       </section>
 
       {/* ══════════════════════════════════════════
-          Section 3: Language / Dil
-          Label stays bilingual in both locales so
-          users of either language can find this.
+          Section 4: Language
       ══════════════════════════════════════════ */}
-      <section aria-labelledby="language-heading">
-        <h2 id="language-heading" className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+      <section className="glass-card rounded-2xl p-5 mb-8" aria-labelledby={`${formBaseId}-lang-title`}>
+        <h2 id={`${formBaseId}-lang-title`} className="text-base font-bold text-white mb-4">
           {t.settings.languageTitle}
         </h2>
 
-        <div className="glass-card rounded-2xl p-2 space-y-1" role="radiogroup" aria-labelledby="language-heading">
-          {LANGUAGES.map((code) => {
-            const isSelected = lang === code;
-            const label = code === 'en'
-              ? 'English 🇬🇧'
-              : 'Türkçe 🇹🇷';
-
+        <div className="flex gap-2" role="radiogroup">
+          {LANGUAGES.map((l) => {
+            const isSelected = lang === l;
             return (
-              <button
-                key={code}
-                id={`language-btn-${code}`}
-                role="radio"
-                aria-checked={isSelected}
-                onClick={() => {
-                  setLanguage(code);
-                  // Toast is always shown in the newly selected language
-                  showToast(
-                    code === 'tr'
-                      ? t.settings.toastLanguageTR
-                      : t.settings.toastLanguageEN,
-                    'info'
-                  );
-                }}
+              <label
+                key={l}
                 className={`
-                  w-full flex items-center gap-3 px-4 py-3.5 rounded-xl
-                  transition-all duration-150 btn-press
+                  flex-1 flex items-center justify-center py-2.5 rounded-xl cursor-pointer border-2 transition-all btn-press
                   ${isSelected
-                    ? 'bg-green-600/15 border border-green-600/25'
-                    : 'border border-transparent hover:bg-white/3'
+                    ? 'bg-blue-500/10 border-blue-500 text-white'
+                    : 'bg-slate-800/50 border-transparent text-slate-400 hover:bg-slate-700 hover:text-white'
                   }
                 `}
               >
-                {/* Radio indicator */}
-                <div
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-150
-                    ${isSelected ? 'border-green-500 bg-green-500' : 'border-slate-600'}`}
-                  aria-hidden="true"
-                >
-                  {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
-                </div>
-
-                {/* Language label */}
-                <p className={`flex-1 text-left text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-400'}`}>
-                  {label}
-                </p>
-
-                {/* Active badge */}
-                {isSelected && (
-                  <span className="text-[10px] font-semibold text-green-400 bg-green-600/15 px-2 py-0.5 rounded-full">
-                    {code === 'en' ? 'Active' : 'Aktif'}
-                  </span>
-                )}
-              </button>
+                <input
+                  type="radio"
+                  name="language"
+                  value={l}
+                  checked={isSelected}
+                  onChange={() => {
+                    setLanguage(l);
+                    showToast(l === 'en' ? t.settings.toastLanguageEN : t.settings.toastLanguageTR, 'success');
+                  }}
+                  className="sr-only"
+                />
+                <span className="text-sm font-semibold">{t.languages[l]}</span>
+              </label>
             );
           })}
         </div>
       </section>
 
-      {/* Bottom padding for safe area */}
-      <div className="h-4" />
     </div>
   );
 }

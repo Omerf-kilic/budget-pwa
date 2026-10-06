@@ -3,38 +3,13 @@ import { useApp } from '../context/AppContext';
 import { useTranslation } from '../hooks/useTranslation';
 import {
   formatAmount,
-  getCurrencySymbol,
   getPeriodBounds,
   sumExpensesByCurrency,
   categorizeExpenses,
-  CURRENCY_META,
-  CURRENCIES,
   CATEGORIES,
   CATEGORY_COLORS,
 } from '../utils/formatters';
 import DonutChart from '../components/ui/DonutChart';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Formats a currency amount compactly for the donut chart center hole.
- * Avoids locale thousands separators to keep the string short.
- *
- * Examples: formatCenter(380.50, 'EUR') → "€380.50"
- *           formatCenter(3000,   'RON') → "3000 lei"
- *           formatCenter(15000,  'TL')  → "₺15K"
- */
-function formatCenter(amount, currency) {
-  const { symbol } = CURRENCY_META[currency] ?? { symbol: currency };
-
-  let numStr;
-  if (amount >= 10000)     numStr = `${Math.round(amount / 1000)}K`;
-  else if (amount >= 1000) numStr = `${Math.round(amount)}`;
-  else                     numStr = amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2);
-
-  // RON symbol ("lei") comes after the number
-  return currency === 'RON' ? `${numStr} lei` : `${symbol}${numStr}`;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -55,8 +30,18 @@ function formatCenter(amount, currency) {
  *   - Shows the total expense amount for that currency (e.g. "€380.50").
  */
 export default function Reports() {
-  const { transactions } = useApp();
+  const { transactions, currencies, getSymbol } = useApp();
   const { t } = useTranslation();
+
+  const formatCenter = useCallback((amount, currency) => {
+    const symbol = getSymbol(currency);
+    let numStr;
+    if (amount >= 10000)     numStr = `${Math.round(amount / 1000)}K`;
+    else if (amount >= 1000) numStr = `${Math.round(amount)}`;
+    else                     numStr = amount % 1 === 0 ? amount.toFixed(0) : amount.toFixed(2);
+
+    return currency === 'RON' ? `${numStr} lei` : `${symbol}${numStr}`;
+  }, [getSymbol]);
 
   const [activePeriod,        setActivePeriod]        = useState('daily');
   const [activeCurrencyIndex, setActiveCurrencyIndex] = useState(0);
@@ -79,7 +64,7 @@ export default function Reports() {
   const categoryData   = categorizeExpenses(transactions, start, end);
 
   // Currencies that actually have expenses in this period
-  const activeCurrencies = CURRENCIES.filter((c) => (currencyTotals[c] ?? 0) > 0);
+  const activeCurrencies = currencies.filter((c) => (currencyTotals[c] ?? 0) > 0);
 
   const totalTxCount = CATEGORIES.reduce(
     (sum, { key }) => sum + (categoryData[key]?.count ?? 0),
@@ -358,7 +343,7 @@ export default function Reports() {
                           </p>
                         </div>
                         <p className="text-xs font-medium text-red-400">
-                          -{formatAmount(seg.amountTotal, activeCurrency)}
+                          -{formatAmount(seg.amountTotal, activeCurrency, getSymbol(activeCurrency))}
                         </p>
                         {/* Progress bar width = amount-based percentage within this currency */}
                         <div className="mt-1.5 h-1 w-full bg-white/5 rounded-full overflow-hidden">
@@ -413,13 +398,13 @@ export default function Reports() {
                   <div className="flex-1">
                     <p className="text-xs text-slate-500 font-medium">{t.reports.totalSpent}</p>
                     <p className="text-lg font-bold text-red-400 leading-tight mt-0.5">
-                      -{formatAmount(total, currency)}
+                      -{formatAmount(total, currency, getSymbol(currency))}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] text-slate-600 font-medium">{t.reports.avgPerTx}</p>
                     <p className="text-sm font-semibold text-slate-400">
-                      {formatAmount(total / Math.max(txCount, 1), currency)}
+                      {formatAmount(total / Math.max(txCount, 1), currency, getSymbol(currency))}
                     </p>
                   </div>
                 </div>
