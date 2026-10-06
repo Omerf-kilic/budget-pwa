@@ -68,6 +68,7 @@ export const translations = {
       ofTotal:          'of total',
       noDataTitle:      'No expenses for this period',
       noDataSubtitle:   'Go to Dashboard to start tracking.',
+      totalLabel:       'Total',
       // legacy keys kept for compat
       emptyTitle:       'No expenses for this period',
       emptySubtitle:    'Go to Dashboard to start tracking.',
@@ -181,6 +182,7 @@ export const translations = {
       ofTotal:          'toplam içinde',
       noDataTitle:      'Bu dönemde harcama yok',
       noDataSubtitle:   "Takibe başlamak için Ana Sayfa'ya gidin.",
+      totalLabel:       'Toplam',
       emptyTitle:       'Bu dönemde harcama yok',
       emptySubtitle:    "Takibe başlamak için Ana Sayfa'ya gidin.",
     },
