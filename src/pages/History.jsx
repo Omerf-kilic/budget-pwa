@@ -257,8 +257,8 @@ export default function History({ showToast }) {
   const emptyStateSubtitle  = showTrash ? t.history.trashEmptySubtitle : t.history.emptySubtitle;
 
   return (
-    <div className="scroll-area no-scrollbar h-full page-enter flex flex-col relative pb-24">
-      <div className="px-4 py-4 flex-1 flex flex-col">
+    <div className="h-full page-enter flex flex-col relative">
+      <div className="scroll-area no-scrollbar flex-1 px-4 py-4 flex flex-col pb-[120px]">
         
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -373,7 +373,7 @@ export default function History({ showToast }) {
 
       {/* ── Fixed Bottom Action Bar (Selection Mode) ── */}
       {isSelectionMode && (
-        <div className="fixed bottom-[80px] left-0 right-0 px-4 z-20 animate-slide-up">
+        <div className="absolute bottom-[80px] left-0 right-0 px-4 z-20 animate-slide-up">
           <div className="glass-card rounded-2xl p-2 flex items-center justify-between shadow-2xl border border-slate-700/50 bg-slate-900/95 backdrop-blur-xl">
             {showTrash ? (
               <div className="flex gap-2 w-full">

@@ -50,7 +50,12 @@ export default function BalanceSettings({ showToast }) {
     setOverIdx(null);
   };
 
-  const handleDragStart = (idx) => { dragRef.current.from = idx; dragRef.current.to = idx; setDraggingIdx(idx); };
+  const handleDragStart = (idx) => { 
+    dragRef.current.from = idx; 
+    dragRef.current.to = idx; 
+    // Delaying the state update ensures the browser captures the element before modifying it
+    setTimeout(() => setDraggingIdx(idx), 0); 
+  };
   const handleDragOver  = (e, idx) => { e.preventDefault(); if (dragRef.current.to !== idx) { dragRef.current.to = idx; setOverIdx(idx); } };
   const handleDrop      = (e) => { e.preventDefault(); commitReorder(); };
   const handleDragEnd   = () => commitReorder();
@@ -180,7 +185,7 @@ export default function BalanceSettings({ showToast }) {
             
             // Reordering visual feedback styles
             let dragClasses = '';
-            if (isDragging) dragClasses = 'opacity-0 scale-95';
+            if (isDragging) dragClasses = 'opacity-40 scale-[0.98] ring-2 ring-blue-500/50 relative z-10';
             else if (isOver && draggingIdx !== null) {
               dragClasses = draggingIdx < idx
                 ? 'translate-y-[-8px] shadow-[0_4px_0_rgba(255,255,255,0.05)]'
