@@ -14,8 +14,9 @@ const LANGUAGES = ['en', 'tr'];
  */
 export default function BalanceSettings({ showToast }) {
   const {
-    balances, settings, currencyOrder, currencies, getSymbol,
-    addBalance, setMainCurrency, setLanguage, setCurrencyOrder, addCustomCurrency
+    balances, settings, currencyOrder, currencies, customCurrencies, getSymbol,
+    addBalance, setMainCurrency, setLanguage, setCurrencyOrder, addCustomCurrency,
+    hasTransactionsForCurrency, deleteCustomCurrency
   } = useApp();
   const { t, lang } = useTranslation();
 
@@ -130,6 +131,14 @@ export default function BalanceSettings({ showToast }) {
       setCustomCode('');
       setCustomSym('');
     }
+  };
+
+  const handleDeleteCustomCurrency = (code) => {
+    if (hasTransactionsForCurrency(code)) {
+      if (!window.confirm(t.settings.currencyDeleteWarning)) return;
+    }
+    deleteCustomCurrency(code);
+    showToast(t.settings.toastCustomCurrencyDeleted, 'success');
   };
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -294,6 +303,30 @@ export default function BalanceSettings({ showToast }) {
             {t.settings.addButton}
           </button>
         </form>
+
+        {customCurrencies.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {customCurrencies.map((c) => (
+              <div key={c.code} className="flex items-center justify-between bg-slate-900/40 rounded-xl px-3 py-2 border border-slate-700/30">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-300 font-bold flex items-center justify-center text-sm">
+                    {c.symbol}
+                  </span>
+                  <span className="text-sm font-bold text-slate-300">{c.code}</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteCustomCurrency(c.code)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors btn-press"
+                  aria-label="Delete"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* ══════════════════════════════════════════

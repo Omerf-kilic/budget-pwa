@@ -62,6 +62,36 @@ export function AppProvider({ children }) {
     return true;
   }, [setCustomCurrencies]);
 
+  const hasTransactionsForCurrency = useCallback((code) => {
+    return transactions.some((t) => t.currency === code);
+  }, [transactions]);
+
+  const deleteCustomCurrency = useCallback((code) => {
+    // 1. Remove from customCurrencies list
+    setCustomCurrencies((prev) => prev.filter((c) => c.code !== code));
+    
+    // 2. Remove from currencyOrder
+    setCurrencyOrderRaw((prev) => prev.filter((c) => c !== code));
+    
+    // 3. Remove all transactions (active + trash) matching this currency
+    setTransactions((prev) => prev.filter((t) => t.currency !== code));
+    
+    // 4. Remove balance for this currency
+    setBalances((prev) => {
+      const newBals = { ...prev };
+      delete newBals[code];
+      return newBals;
+    });
+
+    // 5. If main display currency was this one, fallback to the first default
+    setSettings((prev) => {
+      if (prev.mainDisplayCurrency === code) {
+        return { ...prev, mainDisplayCurrency: DEFAULT_CURRENCY_ORDER[0] };
+      }
+      return prev;
+    });
+  }, [setCustomCurrencies, setCurrencyOrderRaw, setTransactions, setBalances, setSettings]);
+
   /**
    * Saves an expense transaction.
    * Deducts the amount from the specific currency's balance.
@@ -318,8 +348,11 @@ export function AppProvider({ children }) {
     settings,
     currencyOrder: activeCurrencyOrder,
     currencies: allCurrencyCodes,
+    customCurrencies,
     getSymbol,
     addCustomCurrency,
+    hasTransactionsForCurrency,
+    deleteCustomCurrency,
     addExpense,
     addBalance,
     setMainCurrency,
