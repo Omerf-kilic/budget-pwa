@@ -45,6 +45,15 @@ export const translations = {
 
     history: {
       title:         'All Transactions',
+      trashTitle:    'Trash',
+      emptyTrash:    'Empty Trash',
+      restore:       'Restore',
+      deletePermanent: 'Delete Permanently',
+      trashEmptyTitle: 'Trash is empty',
+      trashEmptySubtitle: 'Deleted items will appear here.',
+      toastRestored: 'Transaction restored',
+      toastPurged:   'Transaction deleted permanently',
+      toastEmptied:  'Trash emptied',
       totalSuffix:   'total',
       emptyTitle:    'No transactions yet',
       emptySubtitle: 'Add an expense from the Dashboard to get started.',
@@ -159,6 +168,15 @@ export const translations = {
 
     history: {
       title:         'Tüm İşlemler',
+      trashTitle:    'Çöp Kutusu',
+      emptyTrash:    'Çöp Kutusunu Boşalt',
+      restore:       'Geri Yükle',
+      deletePermanent: 'Kalıcı Olarak Sil',
+      trashEmptyTitle: 'Çöp kutusu boş',
+      trashEmptySubtitle: 'Silinen öğeler burada görünür.',
+      toastRestored: 'İşlem geri yüklendi',
+      toastPurged:   'İşlem kalıcı olarak silindi',
+      toastEmptied:  'Çöp kutusu boşaltıldı',
       totalSuffix:   'toplam',
       emptyTitle:    'Henüz işlem yok',
       emptySubtitle: "Başlamak için Ana Sayfa'dan bir harcama ekleyin.",

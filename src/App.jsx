@@ -48,7 +48,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard showToast={showToast} />;
       case 'history':
-        return <History />;
+        return <History showToast={showToast} />;
       case 'reports':
         return <Reports />;
       case 'balance-settings':

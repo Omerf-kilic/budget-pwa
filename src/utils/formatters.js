@@ -202,6 +202,7 @@ export function sumExpensesByCurrency(transactions, startTime, endTime) {
 
   transactions.forEach((tx) => {
     if (
+      !tx.isDeleted &&
       tx.type === 'expense' &&
       tx.date >= startTime &&
       tx.date <= endTime
@@ -235,6 +236,7 @@ export function categorizeExpenses(transactions, startTime, endTime) {
   });
 
   transactions.forEach((tx) => {
+    if (tx.isDeleted) return;
     if (tx.type !== 'expense') return;
     if (tx.date < startTime || tx.date > endTime) return;
 

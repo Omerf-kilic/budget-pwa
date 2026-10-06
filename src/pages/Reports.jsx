@@ -394,6 +394,7 @@ export default function Reports() {
               const total = currencyTotals[currency];
               const txCount = transactions.filter(
                 (tx) =>
+                  !tx.isDeleted &&
                   tx.type === 'expense' &&
                   tx.currency === currency &&
                   tx.date >= start &&

@@ -128,7 +128,7 @@ export function AppProvider({ children }) {
     (transactionId) => {
       setTransactions((prev) => {
         const tx = prev.find((t) => t.id === transactionId);
-        if (!tx) return prev;
+        if (!tx || tx.isDeleted) return prev;
 
         // Reverse the balance effect
         setBalances((bals) => ({
@@ -139,11 +139,61 @@ export function AppProvider({ children }) {
               : parseFloat(((bals[tx.currency] ?? 0) - tx.amount).toFixed(2)),
         }));
 
-        return prev.filter((t) => t.id !== transactionId);
+        // Soft delete: flag as deleted
+        return prev.map((t) => (t.id === transactionId ? { ...t, isDeleted: true } : t));
       });
     },
     [setBalances, setTransactions]
   );
+
+  /**
+   * Restores a soft-deleted transaction and re-applies its effect on balances.
+   */
+  const restoreTransaction = useCallback(
+    (transactionId) => {
+      setTransactions((prev) => {
+        const tx = prev.find((t) => t.id === transactionId);
+        if (!tx || !tx.isDeleted) return prev;
+
+        // Re-apply the balance effect
+        setBalances((bals) => ({
+          ...bals,
+          [tx.currency]:
+            tx.type === 'expense'
+              ? parseFloat(((bals[tx.currency] ?? 0) - tx.amount).toFixed(2))
+              : parseFloat(((bals[tx.currency] ?? 0) + tx.amount).toFixed(2)),
+        }));
+
+        // Remove the isDeleted flag
+        return prev.map((t) => {
+          if (t.id === transactionId) {
+            const { isDeleted, ...rest } = t;
+            return rest;
+          }
+          return t;
+        });
+      });
+    },
+    [setBalances, setTransactions]
+  );
+
+  /**
+   * Permanently removes a single soft-deleted transaction.
+   */
+  const purgeTransaction = useCallback(
+    (transactionId) => {
+      setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    },
+    [setTransactions]
+  );
+
+  /**
+   * Permanently removes all soft-deleted transactions.
+   */
+  const emptyTrash = useCallback(() => {
+    setTransactions((prev) => prev.filter((t) => !t.isDeleted));
+  }, [setTransactions]);
+
 
   /**
    * Changes the active UI language.
@@ -179,6 +229,9 @@ export function AppProvider({ children }) {
     setMainCurrency,
     setLanguage,
     deleteTransaction,
+    restoreTransaction,
+    purgeTransaction,
+    emptyTrash,
     setCurrencyOrder,
   };
 
